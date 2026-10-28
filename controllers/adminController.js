@@ -4,8 +4,8 @@ import Admin from '../models/Admin.js';
 
 const adminCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: true,
+  sameSite: 'none',
   path: '/',
   maxAge: 24 * 60 * 60 * 1000
 };
@@ -99,8 +99,8 @@ export const logoutAdmin = async (req, res) => {
 
     res.clearCookie('adminToken', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       path: '/'
     });
     return res.status(200).json({ loggedIn: false, message: 'Logged out successfully.' });
