@@ -88,6 +88,28 @@ export const getProducts = async (req, res) => {
   }
 };
 
+export const getCatalogProducts = async (req, res) => {
+  try {
+    const { category } = req.query;
+    const filter = { productType: 'saree' };
+    if (category) {
+      if (!PRODUCT_CATEGORIES.includes(category)) {
+        return res.status(400).json({ message: 'Invalid saree category.' });
+      }
+      filter.category = category;
+    }
+
+    const products = await Product.find(filter)
+      .select('productType category name price stock photo.url createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ products });
+  } catch (error) {
+    return handleDatabaseError(res, error, 'Get saree catalog');
+  }
+};
+
 export const getProductById = async (req, res) => {
   if (isInvalidId(req.params.productId)) return res.status(400).json({ message: 'Invalid product ID.' });
   try {

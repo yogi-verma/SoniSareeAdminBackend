@@ -6,6 +6,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import purchaseRoutes from './routes/purchaseRoutes.js';
 import salesRoutes from './routes/salesRoutes.js';
 import productRoutes from './routes/productRoutes.js';
+import catalogRoutes from './routes/catalogRoutes.js';
 import connectDB from './config/database.js';
 
 const app = express();
@@ -66,6 +67,7 @@ app.use('/', adminRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/catalog', catalogRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found.' });
