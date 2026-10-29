@@ -3,6 +3,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import healthRoutes from './routes/healthRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import purchaseRoutes from './routes/purchaseRoutes.js';
+import salesRoutes from './routes/salesRoutes.js';
 import connectDB from './config/database.js';
 
 const app = express();
@@ -60,6 +62,8 @@ app.use(async (req, res, next) => {
 
 app.use('/api/health', healthRoutes);
 app.use('/', adminRoutes);
+app.use('/api/purchases', purchaseRoutes);
+app.use('/api/sales', salesRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found.' });
