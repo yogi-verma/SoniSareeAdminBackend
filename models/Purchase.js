@@ -44,6 +44,26 @@ const purchaseItemSchema = new mongoose.Schema({
   }
 });
 
+export const PURCHASE_PAYMENT_METHODS = ['cash', 'online', 'cheque'];
+
+const purchasePaymentSchema = new mongoose.Schema({
+  amount: {
+    type: Number,
+    required: [true, 'Payment amount is required.'],
+    min: [1, 'Payment amount must be greater than zero.']
+  },
+  method: {
+    type: String,
+    required: [true, 'Payment method is required.'],
+    enum: PURCHASE_PAYMENT_METHODS
+  },
+  paidAt: {
+    type: Date,
+    required: true,
+    default: Date.now
+  }
+});
+
 const purchaseSchema = new mongoose.Schema({
   companyName: {
     type: String,
@@ -96,12 +116,32 @@ const purchaseSchema = new mongoose.Schema({
     required: [true, 'Total price is required.'],
     min: [0, 'Total price cannot be negative.']
   },
+  payments: {
+    type: [purchasePaymentSchema],
+    default: []
+  },
+  paidAmount: {
+    type: Number,
+    min: [0, 'Paid amount cannot be negative.'],
+    default: 0
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['paid', 'pending'],
+    default: 'pending'
+  },
   purchaseDate: {
     type: Date,
     required: [true, 'Purchase date is required.'],
     default: Date.now
   }
 }, { timestamps: true });
+
+purchaseSchema.pre('validate', function updatePaymentSummary() {
+  const paidAmount = (this.payments ?? []).reduce((total, payment) => total + payment.amount, 0);
+  this.paidAmount = paidAmount;
+  this.paymentStatus = paidAmount >= this.total_price ? 'paid' : 'pending';
+});
 
 const Purchase = mongoose.model('Purchase', purchaseSchema);
 
