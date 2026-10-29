@@ -57,6 +57,57 @@ export const createSalesTransaction = async (req, res) => {
   }
 };
 
+export const createDailySales = async (req, res) => {
+  try {
+    const { onlineAmount, cashAmount, miscellaneousAmount, transactionDate } = req.body ?? {};
+    const amounts = { onlineAmount, cashAmount, miscellaneousAmount };
+
+    for (const [field, amount] of Object.entries(amounts)) {
+      if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({ message: `${field} must be a valid number greater than or equal to zero.` });
+      }
+    }
+
+    const parsedTransactionDate = parseDateOnly(transactionDate);
+    if (!parsedTransactionDate) {
+      return res.status(400).json({ message: 'Transaction date must be a valid date in YYYY-MM-DD format.' });
+    }
+
+    if (onlineAmount === 0 && cashAmount === 0 && miscellaneousAmount === 0) {
+      return res.status(400).json({ message: 'Enter an amount for at least one field.' });
+    }
+
+    const entries = [];
+    if (onlineAmount > 0) {
+      entries.push({ transactionType: 'online', amount: onlineAmount, transactionDate: parsedTransactionDate });
+    }
+    if (cashAmount > 0) {
+      entries.push({ transactionType: 'cash', amount: cashAmount, transactionDate: parsedTransactionDate });
+    }
+    if (miscellaneousAmount > 0) {
+      entries.push({
+        transactionType: 'expense',
+        amount: miscellaneousAmount,
+        description: 'Miscellaneous shop expenses',
+        transactionDate: parsedTransactionDate
+      });
+    }
+
+    const transactions = await SalesTransaction.insertMany(entries);
+    return res.status(201).json({
+      message: 'Daily sales recorded successfully.',
+      transactions
+    });
+  } catch (error) {
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
+      return res.status(400).json({ message: error.message });
+    }
+
+    console.error('Create daily sales failed:', error.message);
+    return res.status(500).json({ message: 'Could not record daily sales.' });
+  }
+};
+
 export const getSalesTransactions = async (req, res) => {
   try {
     const filter = {};
