@@ -90,8 +90,18 @@ export const getProducts = async (req, res) => {
 
 export const getCatalogProducts = async (req, res) => {
   try {
-    const { category } = req.query;
+    const { category, ids } = req.query;
     const filter = { productType: 'saree' };
+
+    if (ids !== undefined) {
+      const productIds = String(ids).split(',').filter(Boolean);
+      if (productIds.length > 100 || productIds.some((id) => isInvalidId(id))) {
+        return res.status(400).json({ message: 'Product IDs must be valid MongoDB IDs (up to 100).'});
+      }
+      if (!productIds.length) return res.status(200).json({ products: [] });
+      filter._id = { $in: productIds };
+    }
+
     if (category) {
       if (!PRODUCT_CATEGORIES.includes(category)) {
         return res.status(400).json({ message: 'Invalid saree category.' });
