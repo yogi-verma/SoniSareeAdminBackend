@@ -92,8 +92,9 @@ export const getProducts = async (req, res) => {
 
 export const getCatalogProducts = async (req, res) => {
   try {
-    const { category, ids } = req.query;
-    const productType = req.query.productType || (ids === undefined ? 'saree' : undefined);
+    const { category, ids, search } = req.query;
+    const hasPriceFilter = req.query.minPrice !== undefined || req.query.maxPrice !== undefined;
+    const productType = req.query.productType || (ids === undefined && !search && !hasPriceFilter ? 'saree' : undefined);
     const filter = {};
 
     if (productType) {
@@ -119,9 +120,58 @@ export const getCatalogProducts = async (req, res) => {
       filter.category = category;
     }
 
+    if (search !== undefined) {
+      const normalizedSearch = String(search).trim().slice(0, 100);
+      if (!normalizedSearch) return res.status(400).json({ message: 'Search text cannot be empty.' });
+      const searchTokens = normalizedSearch
+        .toLocaleLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean)
+        .map((token) => {
+          if (token === 'sarees') return ['saree'];
+          if (['suit', 'suits', 'shuts'].includes(token)) return ['shut', 'suit'];
+          if (token === 'raputi') return ['rajputi', 'raputi'];
+          if (token === 'poshaks') return ['poshak'];
+          return [token];
+        });
+      if (!searchTokens.length) return res.status(400).json({ message: 'Search text must include letters or numbers.' });
+      const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const fields = ['name', 'category', 'productType'];
+      filter.$and = searchTokens.map((token) => ({
+        $or: fields.flatMap((field) => token.map((variant) => ({
+          [field]: { $regex: escapeRegex(variant), $options: 'i' }
+        })))
+      }));
+    }
+
+    if (hasPriceFilter) {
+      const minPrice = req.query.minPrice === undefined ? undefined : Number(req.query.minPrice);
+      const maxPrice = req.query.maxPrice === undefined ? undefined : Number(req.query.maxPrice);
+      if ((minPrice !== undefined && (!Number.isFinite(minPrice) || minPrice < 0))
+        || (maxPrice !== undefined && (!Number.isFinite(maxPrice) || maxPrice < 0))
+        || (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice)) {
+        return res.status(400).json({ message: 'Price filters must be valid non-negative numbers, with minimum no greater than maximum.' });
+      }
+      filter.price = {
+        ...(minPrice !== undefined ? { $gte: minPrice } : {}),
+        ...(maxPrice !== undefined ? { $lte: maxPrice } : {})
+      };
+    }
+
+    const requestedLimit = req.query.limit === undefined ? 12 : Number(req.query.limit);
+    const requestedSkip = req.query.skip === undefined ? 0 : Number(req.query.skip);
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 24) {
+      return res.status(400).json({ message: 'Result limit must be a whole number from 1 to 24.' });
+    }
+    if (!Number.isInteger(requestedSkip) || requestedSkip < 0 || requestedSkip > 10000) {
+      return res.status(400).json({ message: 'Result offset must be a whole number from 0 to 10,000.' });
+    }
+
     const products = await Product.find(filter)
       .select('productType category name price stock photo.url additionalPhotos.url createdAt')
-      .sort({ createdAt: -1 })
+      .sort({ name: 1, createdAt: -1 })
+      .skip(requestedSkip)
+      .limit(requestedLimit)
       .lean();
 
     return res.status(200).json({ products });
