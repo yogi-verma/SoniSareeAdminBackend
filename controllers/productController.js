@@ -41,24 +41,26 @@ const handleDatabaseError = (res, error, action) => {
 };
 
 export const createProduct = async (req, res) => {
-  let uploadedPhoto;
+  const uploadedPhotos = [];
   try {
     const parsed = parseProductFields(req.body ?? {});
     if (parsed.error) return res.status(400).json({ message: parsed.error });
-    if (!req.file) return res.status(400).json({ message: 'A product photo is required in the "photo" field.' });
+    const mainFile = req.files?.photo?.[0];
+    const additionalFiles = req.files?.additionalPhotos ?? [];
+    if (!mainFile) return res.status(400).json({ message: 'A main product photo is required in the "photo" field.' });
 
-    uploadedPhoto = await uploadProductPhoto(req.file.buffer);
-    const product = await Product.create({ ...parsed.fields, photo: uploadedPhoto });
+    const uploaded = [];
+    for (const file of [mainFile, ...additionalFiles]) {
+      const photo = await uploadProductPhoto(file.buffer);
+      uploadedPhotos.push(photo);
+      uploaded.push(photo);
+    }
+    const [photo, ...additionalPhotos] = uploaded;
+    const product = await Product.create({ ...parsed.fields, photo, additionalPhotos });
 
     return res.status(201).json({ message: 'Product created successfully.', product });
   } catch (error) {
-    if (uploadedPhoto) {
-      try {
-        await deleteProductPhoto(uploadedPhoto.publicId);
-      } catch (cleanupError) {
-        console.error('Could not remove an unlinked product photo:', cleanupError.message);
-      }
-    }
+    await Promise.allSettled(uploadedPhotos.map((photo) => deleteProductPhoto(photo.publicId)));
     return handleDatabaseError(res, error, 'Create product');
   }
 };
@@ -118,7 +120,7 @@ export const getCatalogProducts = async (req, res) => {
     }
 
     const products = await Product.find(filter)
-      .select('productType category name price stock photo.url createdAt')
+      .select('productType category name price stock photo.url additionalPhotos.url createdAt')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -132,7 +134,7 @@ export const getCatalogProductById = async (req, res) => {
   if (isInvalidId(req.params.productId)) return res.status(400).json({ message: 'Invalid product ID.' });
   try {
     const product = await Product.findById(req.params.productId)
-      .select('productType category name price stock photo.url createdAt')
+      .select('productType category name price stock photo.url additionalPhotos.url createdAt')
       .lean();
     if (!product) return res.status(404).json({ message: 'Product not found.' });
     return res.status(200).json({ product });
@@ -155,8 +157,8 @@ export const getProductById = async (req, res) => {
 export const updateProduct = async (req, res) => {
   if (isInvalidId(req.params.productId)) return res.status(400).json({ message: 'Invalid product ID.' });
 
-  let uploadedPhoto;
-  let oldPhotoPublicId;
+  const uploadedPhotos = [];
+  const oldPhotoPublicIds = [];
   try {
     const product = await Product.findById(req.params.productId);
     if (!product) return res.status(404).json({ message: 'Product not found.' });
@@ -170,32 +172,35 @@ export const updateProduct = async (req, res) => {
     });
     if (parsed.error) return res.status(400).json({ message: parsed.error });
 
-    if (req.file) {
-      uploadedPhoto = await uploadProductPhoto(req.file.buffer);
-      oldPhotoPublicId = product.photo.publicId;
-      product.photo = uploadedPhoto;
+    const mainFile = req.files?.photo?.[0];
+    const additionalFiles = req.files?.additionalPhotos ?? [];
+    if (product.additionalPhotos.length + additionalFiles.length > 4) {
+      return res.status(400).json({ message: 'A product can have no more than 4 additional photos.' });
+    }
+    if (mainFile) {
+      const photo = await uploadProductPhoto(mainFile.buffer);
+      uploadedPhotos.push(photo);
+      oldPhotoPublicIds.push(product.photo.publicId);
+      product.photo = photo;
+    }
+    if (additionalFiles.length) {
+      const additions = [];
+      for (const file of additionalFiles) {
+        const photo = await uploadProductPhoto(file.buffer);
+        uploadedPhotos.push(photo);
+        additions.push(photo);
+      }
+      product.additionalPhotos.push(...additions);
     }
 
     Object.assign(product, parsed.fields);
     await product.save();
 
-    if (oldPhotoPublicId) {
-      try {
-        await deleteProductPhoto(oldPhotoPublicId);
-      } catch (error) {
-        console.error('Product updated, but the old photo could not be deleted:', error.message);
-      }
-    }
+    await Promise.allSettled(oldPhotoPublicIds.map((publicId) => deleteProductPhoto(publicId)));
 
     return res.status(200).json({ message: 'Product updated successfully.', product });
   } catch (error) {
-    if (uploadedPhoto) {
-      try {
-        await deleteProductPhoto(uploadedPhoto.publicId);
-      } catch (cleanupError) {
-        console.error('Could not remove an unlinked product photo:', cleanupError.message);
-      }
-    }
+    await Promise.allSettled(uploadedPhotos.map((photo) => deleteProductPhoto(photo.publicId)));
     return handleDatabaseError(res, error, 'Update product');
   }
 };
@@ -207,7 +212,10 @@ export const deleteProduct = async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Product not found.' });
 
     try {
-      await deleteProductPhoto(product.photo.publicId);
+      await Promise.all([
+        deleteProductPhoto(product.photo.publicId),
+        ...(product.additionalPhotos ?? []).map((photo) => deleteProductPhoto(photo.publicId))
+      ]);
     } catch (error) {
       console.error('Product deleted, but its Cloudinary photo could not be deleted:', error.message);
     }

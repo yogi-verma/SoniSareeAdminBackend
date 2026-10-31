@@ -56,6 +56,17 @@ const productSchema = new mongoose.Schema({
       type: String,
       required: [true, 'Product photo reference is required.']
     }
+  },
+  additionalPhotos: {
+    type: [{
+      url: { type: String, required: [true, 'Additional product photo URL is required.'] },
+      publicId: { type: String, required: [true, 'Additional product photo reference is required.'] }
+    }],
+    default: [],
+    validate: {
+      validator: (photos) => photos.length <= 4,
+      message: 'A product can have no more than 4 additional photos.'
+    }
   }
 }, { timestamps: true });
 
