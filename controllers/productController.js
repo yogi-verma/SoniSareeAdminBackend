@@ -91,7 +91,15 @@ export const getProducts = async (req, res) => {
 export const getCatalogProducts = async (req, res) => {
   try {
     const { category, ids } = req.query;
-    const filter = { productType: 'saree' };
+    const productType = req.query.productType || (ids === undefined ? 'saree' : undefined);
+    const filter = {};
+
+    if (productType) {
+      if (!PRODUCT_TYPES.includes(productType)) {
+        return res.status(400).json({ message: 'Invalid product type filter.' });
+      }
+      filter.productType = productType;
+    }
 
     if (ids !== undefined) {
       const productIds = String(ids).split(',').filter(Boolean);
@@ -117,6 +125,19 @@ export const getCatalogProducts = async (req, res) => {
     return res.status(200).json({ products });
   } catch (error) {
     return handleDatabaseError(res, error, 'Get saree catalog');
+  }
+};
+
+export const getCatalogProductById = async (req, res) => {
+  if (isInvalidId(req.params.productId)) return res.status(400).json({ message: 'Invalid product ID.' });
+  try {
+    const product = await Product.findById(req.params.productId)
+      .select('productType category name price stock photo.url createdAt')
+      .lean();
+    if (!product) return res.status(404).json({ message: 'Product not found.' });
+    return res.status(200).json({ product });
+  } catch (error) {
+    return handleDatabaseError(res, error, 'Get catalog product');
   }
 };
 
